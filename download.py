@@ -20,7 +20,9 @@ import pydicom_seg
 import requests
 import SimpleITK as sitk
 from tqdm import tqdm
-
+import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 NBIA_API_URL = "https://services.cancerimagingarchive.net/nbia-api/services/v2"
 NBIA_LOGIN_URL = "https://services.cancerimagingarchive.net/nbia-api/oauth/token"
 
@@ -99,7 +101,16 @@ def _download_series(
     series_instance_uid: str,
     authentication_token: str,
 ) -> None:
-    with requests.get(
+    retries = Retry(
+        total=5,  # Maximum 5 retries
+        backoff_factor=0.1,  # Exponential backoff
+        allowed_methods=["GET"] # Only retry GET requests
+    )
+    session = requests.Session()
+    session.mount("http://", HTTPAdapter(max_retries=retries))
+    session.mount("https://", HTTPAdapter(max_retries=retries))
+
+    with session.get(
         NBIA_API_URL + "/getImage",
         params={"SeriesInstanceUID": series_instance_uid},
         headers={"Authorization": "Bearer " + authentication_token},
@@ -386,12 +397,10 @@ if __name__ == "__main__":
                     datetime.datetime.now() - authentication_timestamp
                 ) > datetime.timedelta(seconds=int(token_expires_in * 0.75)):
                     tqdm.write("Refreshing authentication token...")
-                    (
-                        authentication_token,
-                        refresh_token,
-                        token_expires_in,
-                    ) = refresh_authentication_token(refresh_token)
-                    shared_authentication_token.value = authentication_token.encode()  # type: ignore
+                    authentication_token, refresh_token, token_expires_in = get_authentication_token(
+                        username, password
+                    )
+                    shared_authentication_token = mp.Array("c", authentication_token.encode())
                     authentication_timestamp = datetime.datetime.now()
         except KeyboardInterrupt:
             while True:

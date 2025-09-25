@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 from pathlib import Path
 from shutil import copy2
 from typing import Dict, List
@@ -47,8 +48,11 @@ def generate_dataset(
         splits.append({"train": [], "val": []})
     for row in tqdm(info_df.itertuples(), total=len(info_df)):
         old_img = source_root / row.id / "image.nii.gz"
+        if not os.path.exists(old_img):
+            continue;
         old_label = source_root / row.id / filename
-
+        if not os.path.exists(old_label):
+            continue;
         if row.split in {"fold-1", "fold-2", "fold-3", "fold-4", "fold-5"}:
             split = "Tr"
         elif row.split == "test":
